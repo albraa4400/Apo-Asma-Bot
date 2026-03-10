@@ -6,7 +6,7 @@ from flask import Flask
 from threading import Thread
 from telebot import types
 
-# 1. إعداد السيرفر للبقاء حياً
+# 1. إعداد السيرفر للبقاء حياً (Web Server)
 app = Flask('')
 @app.route('/')
 def home():
@@ -20,10 +20,10 @@ def keep_alive():
     t.start()
 
 # 2. إعداد قاعدة البيانات والمدير
-ADMIN_ID = 1201544149  # الـ ID الخاص بك يا أبو العصماء
+ADMIN_ID = 1201544149  # هويتك يا أبو العصماء
 
 def init_db():
-    conn = sqlite3.connect('users.db')
+    conn = sqlite3.connect('users.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)''')
     c.execute('''CREATE TABLE IF NOT EXISTS stats (id INTEGER PRIMARY KEY, downloads INTEGER)''')
@@ -32,22 +32,22 @@ def init_db():
     conn.close()
 
 def add_user(user_id):
-    conn = sqlite3.connect('users.db')
+    conn = sqlite3.connect('users.db', check_same_thread=False)
     c = conn.cursor()
     c.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
     conn.close()
 
-# 3. إعداد البوت
+# 3. إعداد البوت (استخدم التوكن الخاص بك)
 API_TOKEN = '8753502535:AAHmcXsDQnQUhW9rAdGERO2-L0rlIjDQJMA'
 bot = telebot.TeleBot(API_TOKEN)
 init_db()
 
-# 4. لوحة المفاتيح (الأزرار)
+# 4. لوحة المفاتيح (تم تحديث الرابط هنا ✅)
 def main_markup():
     markup = types.InlineKeyboardMarkup()
     btn1 = types.InlineKeyboardButton("👨‍💻 المطور", url="https://t.me/albraamohamed12")
-    btn2 = types.InlineKeyboardButton("📢 قناة التحديثات", url="https://facebook.com/ApoAsma") # يمكنك تغيير الرابط
+    btn2 = types.InlineKeyboardButton("📢 تابعنا على فيسبوك", url="https://www.facebook.com/share/1AbYtC2gaU/")
     markup.add(btn1, btn2)
     return markup
 
@@ -62,67 +62,57 @@ def welcome(message):
 @bot.message_handler(commands=['stats'])
 def show_stats(message):
     if message.chat.id == ADMIN_ID:
-        conn = sqlite3.connect('users.db')
+        conn = sqlite3.connect('users.db', check_same_thread=False)
         c = conn.cursor()
         c.execute("SELECT COUNT(*) FROM users")
         u_count = c.fetchone()[0]
         c.execute("SELECT downloads FROM stats WHERE id = 1")
         d_count = c.fetchone()[0]
         conn.close()
-        bot.reply_to(message, f"📊 إحصائيات الإدارة:\n👥 المستخدمين: {u_count}\n📥 التحميلات: {d_count}")
+        bot.reply_to(message, f"📊 إحصائيات الإدارة يا أبو العصماء:\n\n👥 عدد المستخدمين: {u_count}\n📥 عدد التحميلات: {d_count}")
     else:
-        bot.reply_to(message, "عذراً، هذا الأمر للمدير فقط.")
+        bot.reply_to(message, "عذراً، هذا الأمر للمدير فقط. 🚫")
 
-# ميزة الإذاعة (للمدير فقط)
 @bot.message_handler(commands=['send'])
 def broadcast(message):
     if message.chat.id == ADMIN_ID:
         text = message.text.replace('/send ', '')
         if text == '/send':
-            bot.reply_to(message, "يرجى كتابة نص الرسالة بعد الأمر. مثال:\n`/send مرحبا بكم`")
+            bot.reply_to(message, "يرجى كتابة نص الرسالة بعد الأمر.")
             return
-            
-        conn = sqlite3.connect('users.db')
+        conn = sqlite3.connect('users.db', check_same_thread=False)
         c = conn.cursor()
         c.execute("SELECT user_id FROM users")
         users = c.fetchall()
         conn.close()
-        
         success = 0
         for user in users:
             try:
                 bot.send_message(user[0], text)
                 success += 1
-            except:
-                continue
+            except: continue
         bot.reply_to(message, f"✅ تمت الإذاعة بنجاح لـ {success} مستخدم.")
 
 @bot.message_handler(func=lambda message: message.text.startswith('http'))
 def handle_download(message):
     add_user(message.chat.id)
-    msg = bot.reply_to(message, "⏳ جاري التحميل...")
+    msg = bot.reply_to(message, "⏳ جاري التحميل والمعالجة...")
     try:
         if os.path.exists('video.mp4'): os.remove('video.mp4')
-        
         ydl_opts = {'format': 'best', 'outtmpl': 'video.mp4', 'quiet': True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([message.text])
-        
         with open('video.mp4', 'rb') as video:
             bot.send_video(message.chat.id, video, caption="تم التحميل بواسطة بوت أبو العصماء ✅")
-        
-        # زيادة عداد التحميلات
-        conn = sqlite3.connect('users.db')
+        conn = sqlite3.connect('users.db', check_same_thread=False)
         c = conn.cursor()
         c.execute("UPDATE stats SET downloads = downloads + 1 WHERE id = 1")
         conn.commit()
         conn.close()
-        
         bot.delete_message(message.chat.id, msg.message_id)
     except Exception as e:
-        bot.edit_message_text(f"❌ خطأ: تأكد من الرابط.", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"❌ خطأ: الرابط غير مدعوم أو غير صالح.", message.chat.id, msg.message_id)
 
 if __name__ == "__main__":
     keep_alive()
     bot.infinity_polling()
-        
