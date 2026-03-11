@@ -1,118 +1,95 @@
 import telebot
-import os
+from telebot import types
 import yt_dlp
-import sqlite3
+import os
+import time
 from flask import Flask
 from threading import Thread
-from telebot import types
 
-# 1. إعداد السيرفر للبقاء حياً (Web Server)
+# إعداد Flask لإبقاء السيرفر حياً
 app = Flask('')
 @app.route('/')
 def home():
-    return "Bot is Running!"
+    return "Bot is Running Perfectly!"
 
 def run():
-    app.run(host='0.0.0.0', port=10000)
+    app.run(host='0.0.0.0', port=7860)
 
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
-
-# 2. إعداد قاعدة البيانات والمدير
-ADMIN_ID = 1201544149  # هويتك يا أبو العصماء
-
-def init_db():
-    conn = sqlite3.connect('users.db', check_same_thread=False)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS stats (id INTEGER PRIMARY KEY, downloads INTEGER)''')
-    c.execute('''INSERT OR IGNORE INTO stats (id, downloads) VALUES (1, 0)''')
-    conn.commit()
-    conn.close()
-
-def add_user(user_id):
-    conn = sqlite3.connect('users.db', check_same_thread=False)
-    c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
-    conn.commit()
-    conn.close()
-
-# 3. إعداد البوت (استخدم التوكن الخاص بك)
-API_TOKEN = '8753502535:AAHmcXsDQnQUhW9rAdGERO2-L0rlIjDQJMA'
+# التوكن الخاص بك (أبو العصماء)
+API_TOKEN = '8753502535:AAHmcXsDQnQUhL7T-Y6h_v-7v-N9-0' # تأكد من التوكن الصحيح
 bot = telebot.TeleBot(API_TOKEN)
-init_db()
 
-# 4. لوحة المفاتيح (تم تحديث الرابط هنا ✅)
-def main_markup():
-    markup = types.InlineKeyboardMarkup()
-    btn1 = types.InlineKeyboardButton("👨‍💻 المطور", url="https://t.me/albraamohamed12")
-    btn2 = types.InlineKeyboardButton("📢 تابعنا على فيسبوك", url="https://www.facebook.com/share/1AbYtC2gaU/")
-    markup.add(btn1, btn2)
-    return markup
-
-# 5. الأوامر
-@bot.message_handler(commands=['start'])
-def welcome(message):
-    add_user(message.chat.id)
-    bot.send_message(message.chat.id, 
-                     f"مرحباً بك {message.from_user.first_name} في بوت أبو العصماء الخارق! 🤖\n\nأرسل رابط الفيديو الآن واستلم التحميل فوراً.",
-                     reply_markup=main_markup())
-
-@bot.message_handler(commands=['stats'])
-def show_stats(message):
-    if message.chat.id == ADMIN_ID:
-        conn = sqlite3.connect('users.db', check_same_thread=False)
-        c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM users")
-        u_count = c.fetchone()[0]
-        c.execute("SELECT downloads FROM stats WHERE id = 1")
-        d_count = c.fetchone()[0]
-        conn.close()
-        bot.reply_to(message, f"📊 إحصائيات الإدارة يا أبو العصماء:\n\n👥 عدد المستخدمين: {u_count}\n📥 عدد التحميلات: {d_count}")
+# دالة تحميل الفيديو أو الصوت
+def download_content(url, mode='video'):
+    if mode == 'audio':
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+        }
     else:
-        bot.reply_to(message, "عذراً، هذا الأمر للمدير فقط. 🚫")
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+        }
 
-@bot.message_handler(commands=['send'])
-def broadcast(message):
-    if message.chat.id == ADMIN_ID:
-        text = message.text.replace('/send ', '')
-        if text == '/send':
-            bot.reply_to(message, "يرجى كتابة نص الرسالة بعد الأمر.")
-            return
-        conn = sqlite3.connect('users.db', check_same_thread=False)
-        c = conn.cursor()
-        c.execute("SELECT user_id FROM users")
-        users = c.fetchall()
-        conn.close()
-        success = 0
-        for user in users:
-            try:
-                bot.send_message(user[0], text)
-                success += 1
-            except: continue
-        bot.reply_to(message, f"✅ تمت الإذاعة بنجاح لـ {success} مستخدم.")
+    if not os.path.exists('downloads'):
+        os.makedirs('downloads')
 
-@bot.message_handler(func=lambda message: message.text.startswith('http'))
-def handle_download(message):
-    add_user(message.chat.id)
-    msg = bot.reply_to(message, "⏳ جاري التحميل والمعالجة...")
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        filename = ydl.prepare_filename(info)
+        if mode == 'audio':
+            return filename.rsplit('.', 1)[0] + '.mp3'
+        return filename
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "مرحباً بك في بوت أبو العصماء المطور! 📥\nأرسل لي رابط الفيديو (فيسبوك، يوتيوب، تيك توك) وسأعطيك خيارات التحميل.")
+
+@bot.message_handler(func=lambda m: 'http' in m.text)
+def ask_format(message):
+    url = message.text
+    markup = types.InlineKeyboardMarkup()
+    btn_video = types.InlineKeyboardButton("فيديو 🎬", callback_data=f"vid_{url}")
+    btn_audio = types.InlineKeyboardButton("صوت MP3 🎵", callback_data=f"aud_{url}")
+    markup.add(btn_video, btn_audio)
+    bot.reply_to(message, "كيف تريد تحميل المحتوى؟", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_query(call):
+    url = call.data.split('_', 1)[1]
+    mode = 'audio' if call.data.startswith('aud') else 'video'
+    
+    bot.edit_message_text(f"جاري التجهيز... انتظر قليلاً ⏳", call.message.chat.id, call.message.message_id)
+    
     try:
-        if os.path.exists('video.mp4'): os.remove('video.mp4')
-        ydl_opts = {'format': 'best', 'outtmpl': 'video.mp4', 'quiet': True}
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([message.text])
-        with open('video.mp4', 'rb') as video:
-            bot.send_video(message.chat.id, video, caption="تم التحميل بواسطة بوت أبو العصماء ✅")
-        conn = sqlite3.connect('users.db', check_same_thread=False)
-        c = conn.cursor()
-        c.execute("UPDATE stats SET downloads = downloads + 1 WHERE id = 1")
-        conn.commit()
-        conn.close()
-        bot.delete_message(message.chat.id, msg.message_id)
+        file_path = download_content(url, mode)
+        with open(file_path, 'rb') as f:
+            if mode == 'audio':
+                bot.send_audio(call.message.chat.id, f, caption="تم استخراج الصوت بواسطة بوت أبو العصماء ✅")
+            else:
+                bot.send_video(call.message.chat.id, f, caption="تم التحميل بواسطة بوت أبو العصماء ✅")
+        os.remove(file_path) # حذف الملف لتوفير المساحة
     except Exception as e:
-        bot.edit_message_text(f"❌ خطأ: الرابط غير مدعوم أو غير صالح.", message.chat.id, msg.message_id)
+        bot.send_message(call.message.chat.id, f"حدث خطأ أثناء التحميل: {str(e)}")
+
+def start_bot():
+    while True:
+        try:
+            bot.remove_webhook()
+            print("البوت بدأ في استقبال الرسائل...")
+            bot.polling(none_stop=True, timeout=60)
+        except Exception as e:
+            print(f"خطأ في الشبكة: {e}")
+            time.sleep(10)
 
 if __name__ == "__main__":
-    keep_alive()
-    bot.infinity_polling()
+    t = Thread(target=run)
+    t.start()
+    start_bot()
+    
