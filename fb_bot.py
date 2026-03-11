@@ -107,7 +107,6 @@ def start_bot():
         except Exception as e:
             print(f"خطأ في الاتصال: {e}")
             time.sleep(10)
-
 if __name__ == "__main__":
     # تشغيل Flask في خيط منفصل (Daemon) لضمان عدم توقف الكود الرئيسي
     t = Thread(target=run_flask)
